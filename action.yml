@@ -1,0 +1,158 @@
+name: 'Parse Deploy Config Source'
+description: 'Parse deployment configuration source string into repo, ref, and path components'
+author: 'KoalaOps'
+
+inputs:
+  deploy_config_source:
+    description: |
+      Where to read deployment config (overlays/charts) from, in the form
+      "<repo>[@<ref>][:<path>]".
+      - repo: "self" for the current repo, or "owner/repo"
+      - @ref: optional branch or tag (defaults to deployment_ref or repo default)
+      - :path: optional path to overlay/chart root (auto-discovered if omitted)
+      
+      If entirely omitted, defaults to:
+      - repo: self
+      - ref: deployment_ref or repo default branch
+      - path: auto-discovered based on tool (kustomize/helm)
+      
+      Examples:
+        self
+        self:deploy/overlays/prod
+        self:services/api/deploy/overlays/staging
+        Acme/deployments:services/api/deploy/overlays/prod
+        Acme/deployments@main:platform/payments/deploy/overlays/dev
+    required: false
+    default: ''
+  deployment_ref:
+    description: 'Default git ref to use if not specified in deploy_config_source'
+    required: false
+  service_dir:
+    description: 'Service directory for default path construction'
+    required: false
+    default: '.'
+  environment:
+    description: 'Environment name for default path construction'
+    required: false
+  current_repository:
+    description: 'Current repository (defaults to github.repository)'
+    required: false
+    default: ${{ github.repository }}
+  current_ref:
+    description: 'Current git ref (defaults to github.ref)'
+    required: false
+    default: ${{ github.ref }}
+
+outputs:
+  repository:
+    description: 'The parsed repository (owner/repo format)'
+    value: ${{ steps.parse.outputs.repository }}
+  ref:
+    description: 'The parsed git ref (branch or tag)'
+    value: ${{ steps.parse.outputs.ref }}
+  path:
+    description: 'The parsed path to deployment configuration'
+    value: ${{ steps.parse.outputs.path }}
+  is_self:
+    description: 'Whether this is the current repository (true/false)'
+    value: ${{ steps.parse.outputs.is_self }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Parse deploy config source
+      id: parse
+      shell: bash
+      run: |
+        # Get inputs
+        DEPLOY_CONFIG_SOURCE="${{ inputs.deploy_config_source }}"
+        DEPLOYMENT_REF="${{ inputs.deployment_ref }}"
+        SERVICE_DIR="${{ inputs.service_dir }}"
+        ENVIRONMENT="${{ inputs.environment }}"
+        CURRENT_REPO="${{ inputs.current_repository }}"
+        CURRENT_REF="${{ inputs.current_ref }}"
+        
+        # No filesystem probing - keep it simple
+        
+        # If deploy_config_source is empty, use smart defaults
+        if [ -z "$DEPLOY_CONFIG_SOURCE" ]; then
+          echo "::notice::deploy_config_source not provided, using auto-discovery"
+          DEPLOY_CONFIG_SOURCE="self"
+        fi
+        
+        # Reject absolute paths
+        if [[ "$DEPLOY_CONFIG_SOURCE" == /* ]]; then
+          echo "::error::Absolute paths not allowed in deploy_config_source. Use relative paths."
+          exit 1
+        fi
+        
+        # Parse the deploy_config_source string
+        # Format: <repo>[@<ref>][:<path>]
+        if [[ "$DEPLOY_CONFIG_SOURCE" =~ ^([^@:]+)(@[^:]+)?(:.+)?$ ]]; then
+          PARSED_REPO="${BASH_REMATCH[1]}"
+          PARSED_REF="${BASH_REMATCH[2]#@}"  # Remove @ prefix
+          PARSED_PATH="${BASH_REMATCH[3]#:}"  # Remove : prefix
+          
+          # Handle 'self' keyword
+          IS_SELF="false"
+          if [ "$PARSED_REPO" = "self" ]; then
+            PARSED_REPO="$CURRENT_REPO"
+            IS_SELF="true"
+          elif [ "$PARSED_REPO" = "$CURRENT_REPO" ]; then
+            IS_SELF="true"
+          fi
+          
+          # Validate repository format (must be owner/repo)
+          if [ "$PARSED_REPO" != "self" ] && ! [[ "$PARSED_REPO" =~ ^[^/]+/[^/]+$ ]]; then
+            echo "::error::Invalid repository format in deploy_config_source. Expected 'self' or 'owner/repo', got: '$PARSED_REPO'"
+            exit 1
+          fi
+          
+          # Apply defaults for ref
+          if [ -z "$PARSED_REF" ]; then
+            if [ -n "$DEPLOYMENT_REF" ]; then
+              # Use explicit deployment_ref input
+              PARSED_REF="$DEPLOYMENT_REF"
+            elif [ "$IS_SELF" = "true" ]; then
+              # Same repo: use current ref
+              PARSED_REF="$CURRENT_REF"
+            else
+              # Different repo: let checkout use its default branch
+              PARSED_REF=""
+            fi
+          fi
+          
+          # Apply simple defaults for path (matching template logic)
+          if [ -z "$PARSED_PATH" ]; then
+            if [ -n "$SERVICE_DIR" ] && [ "$SERVICE_DIR" != "." ]; then
+              # Use service_dir based path
+              PARSED_PATH="${SERVICE_DIR}/deploy/overlays/${ENVIRONMENT}"
+            elif [ -n "$ENVIRONMENT" ]; then
+              # Use standard path
+              PARSED_PATH="deploy/overlays/${ENVIRONMENT}"
+            else
+              # No environment, just use deploy directory
+              PARSED_PATH="deploy"
+            fi
+          fi
+          
+          # Clean up path (remove leading/trailing slashes, duplicate slashes)
+          PARSED_PATH="${PARSED_PATH#/}"  # Remove leading slash
+          PARSED_PATH="${PARSED_PATH%/}"  # Remove trailing slash
+          PARSED_PATH=$(echo "$PARSED_PATH" | sed 's|/\+|/|g')  # Remove duplicate slashes
+          
+          # Log resolution for transparency
+          echo "::notice::Resolved deployment source → repo='$PARSED_REPO', ref='${PARSED_REF:-<default>}', path='$PARSED_PATH'"
+          
+          # Set outputs
+          echo "repository=$PARSED_REPO" >> $GITHUB_OUTPUT
+          echo "ref=$PARSED_REF" >> $GITHUB_OUTPUT
+          echo "path=$PARSED_PATH" >> $GITHUB_OUTPUT
+          echo "is_self=$IS_SELF" >> $GITHUB_OUTPUT
+          
+        else
+          echo "::error::Invalid deploy_config_source format. Expected '<repo>[@<ref>][:<path>]'."
+          echo "::error::Use 'self' or 'owner/repo' for <repo>."
+          echo "::error::Examples: 'self', 'self:deploy/overlays/prod', 'Acme/deployments@main:services/api'"
+          exit 1
+        fi
