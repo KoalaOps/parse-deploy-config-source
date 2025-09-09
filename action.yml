@@ -2,6 +2,10 @@ name: 'Parse Deploy Config Source'
 description: 'Parse deployment configuration source string into repo, ref, and path components'
 author: 'KoalaOps'
 
+branding:
+  icon: 'git-branch'
+  color: 'purple'
+
 inputs:
   deploy_config_source:
     description: |
