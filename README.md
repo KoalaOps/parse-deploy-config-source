@@ -1,57 +1,78 @@
 # Parse Deploy Config Source
 
-**Internal Action** - Parses deployment configuration sources for cross-repository deployments.
+**Internal Action** - Parses deployment configuration source strings.
 
 ## Purpose
 
-This action parses deployment source configurations to determine where Kubernetes manifests are located (same repo vs separate repo). Used internally by deploy workflows.
+Parses a deployment source string into repository, ref, and path components for cross-repository deployments.
 
 ## Usage
 
 ```yaml
-# Internal use in deploy workflows
 - uses: KoalaOps/parse-deploy-config-source@v1
+  id: config
   with:
-    deploy_config_source: "KoalaOps/k8s-configs:services/backend"
-    deployment_ref: main
-    environment: production
+    source: "KoalaOps/k8s-configs@main:services/backend"
+
+# The actual deployment configs are expected at:
+# <path>/deploy/overlays/<environment>/
+- run: |
+    echo "Repository: ${{ steps.config.outputs.repository }}"
+    echo "Ref: ${{ steps.config.outputs.ref }}"
+    echo "Service path: ${{ steps.config.outputs.path }}"
 ```
 
-## Inputs
+## Input
 
-| Input | Description | Required | Default |
-|-------|-------------|----------|---------|
-| `deploy_config_source` | Where to read deployment config from: `<repo>[@<ref>][:<path>]` | ❌ | '' |
-| `deployment_ref` | Default git ref to use if not specified in deploy_config_source | ❌ | - |
-| `service_dir` | Service directory for default path construction | ❌ | '.' |
-| `environment` | Environment name for default path construction | ❌ | - |
-| `current_repository` | Current repository | ❌ | `${{ github.repository }}` |
-| `current_ref` | Current git ref | ❌ | `${{ github.ref }}` |
+| Input | Description | Required |
+|-------|-------------|----------|
+| `source` | Config source: `[<repo>][@<ref>][:<path>]` | ✅ |
 
 ## Outputs
 
 | Output | Description |
 |--------|-------------|
-| `repository` | The parsed repository (owner/repo format) |
-| `ref` | The parsed git ref (branch or tag) |
-| `path` | The parsed path to deployment configuration |
-| `is_self` | Whether this is the current repository (true/false) |
+| `repository` | Parsed repository (owner/repo format) |
+| `ref` | Parsed git ref (branch or tag) |
+| `path` | Parsed path to service/app deployment directory |
+| `is_self` | Whether this is the current repository |
 
-## Config Source Format
+## Source Format
 
-Format: `<repo>[@<ref>][:<path>]`
+Format: `[<repo>][@<ref>][:<path>]`
 
-- `repo`: "self" for current repo, or "owner/repo"  
-- `@ref`: optional branch or tag (defaults to deployment_ref or repo default)
-- `:path`: optional path to overlay/chart root (auto-discovered if omitted)
+All parts are optional and can be omitted:
+- `repo`: "self" for current repo, or "owner/repo" (defaults to "self")
+- `@ref`: branch/tag (defaults to current ref for self, default branch for others)
+- `:path`: path to service/app directory (defaults to ".")
 
-Examples:
-- `self`
-- `self:deploy/overlays/prod`
-- `self:services/api/deploy/overlays/staging`
-- `Acme/deployments:services/api/deploy/overlays/prod`
-- `Acme/deployments@main:platform/payments/deploy/overlays/dev`
+### Directory Structure
+
+The action expects deployment configs to follow this structure:
+```
+<path>/
+└── deploy/
+    └── overlays/
+        ├── dev/
+        ├── staging/
+        └── prod/
+```
+
+### Examples
+
+| Source | Repository | Ref | Path | Description |
+|--------|------------|-----|------|-------------|
+| `""` | self (current) | current ref | `.` | All defaults |
+| `self` | self (current) | current ref | `.` | Explicit self |
+| `@main` | self (current) | main | `.` | Specify ref only |
+| `:services/api` | self (current) | current ref | `services/api` | Specify path only |
+| `@main:services/api` | self (current) | main | `services/api` | Ref and path |
+| `self:services/api` | self (current) | current ref | `services/api` | Repo and path |
+| `Acme/configs` | Acme/configs | default branch | `.` | External repo |
+| `Acme/configs@v1.2.3` | Acme/configs | v1.2.3 | `.` | External with tag |
+| `Acme/configs:services/api` | Acme/configs | default branch | `services/api` | External with path |
+| `Acme/configs@main:services/api` | Acme/configs | main | `services/api` | Full specification |
 
 ## Note
 
-This is an internal action used by deploy workflows to handle cross-repository deployment configurations. Not intended for direct use.
+Internal action used by deploy workflows for cross-repository configurations.
