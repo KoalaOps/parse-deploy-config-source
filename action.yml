@@ -59,22 +59,22 @@ runs:
           # Empty or invalid minimal cases - use all defaults
           REPO="self"
           REF=""
-          PATH=""
+          CONFIG_PATH=""
         elif [[ "$SOURCE" =~ ^:(.+)$ ]]; then
           # Just path (e.g., ":services/api")
           REPO="self"
           REF=""
-          PATH="${BASH_REMATCH[1]}"
+          CONFIG_PATH="${BASH_REMATCH[1]}"
         elif [[ "$SOURCE" =~ ^@([^:]+)(:.+)?$ ]]; then
           # Just ref and optional path (e.g., "@main" or "@main:services/api")
           REPO="self"
           REF="${BASH_REMATCH[1]}"
-          PATH="${BASH_REMATCH[2]#:}"  # Remove : prefix
+          CONFIG_PATH="${BASH_REMATCH[2]#:}"  # Remove : prefix
         elif [[ "$SOURCE" =~ ^([^@:]+)(@[^:]+)?(:.+)?$ ]]; then
           # Standard format with repo
           REPO="${BASH_REMATCH[1]}"
           REF="${BASH_REMATCH[2]#@}"   # Remove @ prefix
-          PATH="${BASH_REMATCH[3]#:}"  # Remove : prefix
+          CONFIG_PATH="${BASH_REMATCH[3]#:}"  # Remove : prefix
         else
           echo "::error::Invalid source format. Expected '[<repo>][@<ref>][:<path>]'"
           echo "::error::Examples: 'self', '@main', ':services/api', 'Acme/deployments@main:platform/payments'"
@@ -104,19 +104,19 @@ runs:
           # For external repos, leave empty to use default branch
         fi
         
-        if [ -z "$PATH" ]; then
-          PATH="."
+        if [ -z "$CONFIG_PATH" ]; then
+          CONFIG_PATH="."
         fi
         
         # Clean up path
-        PATH="${PATH#/}"              # Remove leading slash
-        PATH="${PATH%/}"              # Remove trailing slash
-        PATH=$(echo "$PATH" | sed 's|/\+|/|g')  # Remove duplicate slashes
+        CONFIG_PATH="${CONFIG_PATH#/}"              # Remove leading slash
+        CONFIG_PATH="${CONFIG_PATH%/}"              # Remove trailing slash
+        CONFIG_PATH=$(echo "$CONFIG_PATH" | sed 's|/\+|/|g')  # Remove duplicate slashes
         
         # Set outputs
         echo "repository=$REPO" >> $GITHUB_OUTPUT
         echo "ref=$REF" >> $GITHUB_OUTPUT
-        echo "path=$PATH" >> $GITHUB_OUTPUT
+        echo "path=$CONFIG_PATH" >> $GITHUB_OUTPUT
         echo "is_self=$IS_SELF" >> $GITHUB_OUTPUT
         
-        echo "::notice::Parsed: repo='$REPO', ref='${REF:-<default>}', path='$PATH'"
+        echo "::notice::Parsed: repo='$REPO', ref='${REF:-<default>}', path='$CONFIG_PATH'"
