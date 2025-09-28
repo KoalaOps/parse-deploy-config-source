@@ -249,6 +249,93 @@ jobs:
           [[ "${{ steps.test12.outputs.ref }}" == "feature/test-123" ]] || exit 1
           [[ "${{ steps.test12.outputs.path }}" == "platform/payments/service" ]] || exit 1
       
+      # Test 13: With environment - test overlay_dir output
+      - name: Test with environment (prod)
+        id: test13
+        uses: ./
+        with:
+          source: "self"
+          environment: "prod"
+
+      - name: Validate with environment
+        run: |
+          echo "Test 13: With environment"
+          echo "Repository: ${{ steps.test13.outputs.repository }}"
+          echo "Path: ${{ steps.test13.outputs.path }}"
+          echo "Overlay dir: ${{ steps.test13.outputs.overlay_dir }}"
+          echo "Is separate deploy repo: ${{ steps.test13.outputs.is_separate_deploy_repo }}"
+
+          [[ "${{ steps.test13.outputs.overlay_dir }}" == "deploy/overlays/prod" ]] || exit 1
+          [[ "${{ steps.test13.outputs.is_separate_deploy_repo }}" == "false" ]] || exit 1
+
+      # Test 14: With environment and path
+      - name: Test with environment and path
+        id: test14
+        uses: ./
+        with:
+          source: ":services/api"
+          environment: "staging"
+
+      - name: Validate with environment and path
+        run: |
+          echo "Test 14: With environment and path"
+          echo "Path: ${{ steps.test14.outputs.path }}"
+          echo "Overlay dir: ${{ steps.test14.outputs.overlay_dir }}"
+
+          [[ "${{ steps.test14.outputs.overlay_dir }}" == "services/api/deploy/overlays/staging" ]] || exit 1
+
+      # Test 15: Without environment - overlay_dir should be empty
+      - name: Test without environment
+        id: test15
+        uses: ./
+        with:
+          source: "self:services/api"
+
+      - name: Validate without environment
+        run: |
+          echo "Test 15: Without environment"
+          echo "Path: ${{ steps.test15.outputs.path }}"
+          echo "Overlay dir: '${{ steps.test15.outputs.overlay_dir }}'"
+
+          [[ -z "${{ steps.test15.outputs.overlay_dir }}" ]] || exit 1
+
+      # Test 16: External repo - is_separate_deploy_repo should be true
+      - name: Test external repo deploy flag
+        id: test16
+        uses: ./
+        with:
+          source: "Acme/configs"
+          environment: "dev"
+
+      - name: Validate external repo deploy flag
+        run: |
+          echo "Test 16: External repo deploy flag"
+          echo "Repository: ${{ steps.test16.outputs.repository }}"
+          echo "Is separate deploy repo: ${{ steps.test16.outputs.is_separate_deploy_repo }}"
+          echo "Overlay dir: ${{ steps.test16.outputs.overlay_dir }}"
+
+          [[ "${{ steps.test16.outputs.is_separate_deploy_repo }}" == "true" ]] || exit 1
+          [[ "${{ steps.test16.outputs.overlay_dir }}" == "deploy/overlays/dev" ]] || exit 1
+
+      # Test 17: External repo with path and environment
+      - name: Test external repo with path and environment
+        id: test17
+        uses: ./
+        with:
+          source: "Acme/configs@main:platform/services"
+          environment: "qa"
+
+      - name: Validate external repo with path and environment
+        run: |
+          echo "Test 17: External repo with path and environment"
+          echo "Repository: ${{ steps.test17.outputs.repository }}"
+          echo "Path: ${{ steps.test17.outputs.path }}"
+          echo "Overlay dir: ${{ steps.test17.outputs.overlay_dir }}"
+          echo "Is separate deploy repo: ${{ steps.test17.outputs.is_separate_deploy_repo }}"
+
+          [[ "${{ steps.test17.outputs.overlay_dir }}" == "platform/services/deploy/overlays/qa" ]] || exit 1
+          [[ "${{ steps.test17.outputs.is_separate_deploy_repo }}" == "true" ]] || exit 1
+
       - name: Summary
         run: |
           echo "✅ All tests passed!"
@@ -266,3 +353,8 @@ jobs:
           echo "- Full specification"
           echo "- Path cleanup"
           echo "- Complex paths and refs"
+          echo "- With environment (overlay_dir output)"
+          echo "- With environment and path"
+          echo "- Without environment (no overlay_dir)"
+          echo "- External repo (is_separate_deploy_repo true)"
+          echo "- External repo with path and environment"
