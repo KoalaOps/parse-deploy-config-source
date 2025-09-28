@@ -14,9 +14,9 @@ inputs:
       - repo: "self" for current repo, or "owner/repo" (defaults to "self")
       - @ref: branch/tag (defaults to current ref for self, default branch for others)
       - :path: path to service/app directory (defaults to ".")
-      
+
       The action expects deployment configs to be in <path>/deploy/overlays/<env>
-      
+
       Examples:
         ""                                    # self, current ref, path="."
         self                                  # self, current ref, path="."
@@ -27,6 +27,9 @@ inputs:
         Acme/deployments                      # external repo, default branch, path="."
         Acme/deployments@main:services/api    # external repo, main branch, path="services/api"
     required: true
+  environment:
+    description: 'The deployment environment (e.g., dev, staging, prod)'
+    required: false
 
 outputs:
   repository:
@@ -41,6 +44,12 @@ outputs:
   is_self:
     description: 'Whether this is the current repository (true/false)'
     value: ${{ steps.parse.outputs.is_self }}
+  overlay_dir:
+    description: 'The full path to the overlay directory for the environment (only set if environment input is provided)'
+    value: ${{ steps.parse.outputs.overlay_dir }}
+  is_separate_deploy_repo:
+    description: 'Whether the deployment repo is different from the current repository (true/false)'
+    value: ${{ steps.parse.outputs.is_separate_deploy_repo }}
 
 runs:
   using: 'composite'
@@ -113,10 +122,32 @@ runs:
         CONFIG_PATH="${CONFIG_PATH%/}"              # Remove trailing slash
         CONFIG_PATH=$(echo "$CONFIG_PATH" | sed 's|/\+|/|g')  # Remove duplicate slashes
         
+        # Calculate overlay directory if environment is provided
+        ENVIRONMENT="${{ inputs.environment }}"
+        if [ -n "$ENVIRONMENT" ]; then
+          if [ "$CONFIG_PATH" = "." ]; then
+            OVERLAY_DIR="deploy/overlays/$ENVIRONMENT"
+          else
+            OVERLAY_DIR="$CONFIG_PATH/deploy/overlays/$ENVIRONMENT"
+          fi
+          echo "overlay_dir=$OVERLAY_DIR" >> $GITHUB_OUTPUT
+        fi
+
+        # Determine if this is a separate deploy repo
+        IS_SEPARATE_DEPLOY_REPO="false"
+        if [ "$REPO" != "$CURRENT_REPO" ]; then
+          IS_SEPARATE_DEPLOY_REPO="true"
+        fi
+
         # Set outputs
         echo "repository=$REPO" >> $GITHUB_OUTPUT
         echo "ref=$REF" >> $GITHUB_OUTPUT
         echo "path=$CONFIG_PATH" >> $GITHUB_OUTPUT
         echo "is_self=$IS_SELF" >> $GITHUB_OUTPUT
-        
-        echo "::notice::Parsed: repo='$REPO', ref='${REF:-<default>}', path='$CONFIG_PATH'"
+        echo "is_separate_deploy_repo=$IS_SEPARATE_DEPLOY_REPO" >> $GITHUB_OUTPUT
+
+        if [ -n "$ENVIRONMENT" ]; then
+          echo "::notice::Parsed: repo='$REPO', ref='${REF:-<default>}', path='$CONFIG_PATH', overlay='$OVERLAY_DIR'"
+        else
+          echo "::notice::Parsed: repo='$REPO', ref='${REF:-<default>}', path='$CONFIG_PATH'"
+        fi

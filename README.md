@@ -22,11 +22,12 @@ Parses a deployment source string into repository, ref, and path components for 
     echo "Service path: ${{ steps.config.outputs.path }}"
 ```
 
-## Input
+## Inputs
 
 | Input | Description | Required |
 |-------|-------------|----------|
 | `source` | Config source: `[<repo>][@<ref>][:<path>]` | ✅ |
+| `environment` | The deployment environment (e.g., dev, staging, prod) | ❌ |
 
 ## Outputs
 
@@ -36,6 +37,8 @@ Parses a deployment source string into repository, ref, and path components for 
 | `ref` | Parsed git ref (branch or tag) |
 | `path` | Parsed path to service/app deployment directory |
 | `is_self` | Whether this is the current repository |
+| `overlay_dir` | The full path to the overlay directory (only when environment is provided) |
+| `is_separate_deploy_repo` | Whether the deployment repo is different from the current repository |
 
 ## Source Format
 
